@@ -1,0 +1,52 @@
+module Test where
+
+import MedicalRecord
+import HealthInsurance
+import Doctor
+import Daml.Script
+
+-- create test-data structure
+data TestData = TestData 
+    with 
+        registry: Party 
+        doctor: Party 
+        patient: Party
+        insurer: Party
+        policyId: ContractId Policy
+        registerId: RegisterId 
+    deriving (Show)
+
+-- create function to allocate values to test-data structure
+setupTestData:  Script TestData 
+setupTestData = do 
+    patient <- allocateParty "Alice"
+    registry <- allocateParty "Registry"
+    doctor <- allocateParty "Doctor"
+    insurer <- allocateParty "Insurance"
+    bank <- allocateParty "Bank"
+
+    let treatments = ["GeneralCounsel", "Flu-shot", "Hip-replacement"]
+
+    policyId <- submit insurer do
+        createCmd Policy with insurer, client = patient, paymentBank = bank, treatments, observers = []
+
+    mb <- submit registry do 
+        createCmd Register with registry, owner = patient, observers = [patient], records = []
+
+    registerId <- submit patient do
+        exerciseCmd mb AddRecord with description = "Don't think the patient will last long unless he quits smoking.", doctor
+
+    return $ TestData with 
+            ..
+
+testScript: Script () 
+testScript = do 
+    testData <- setupTestData 
+
+    offerApt <- submit testData.doctor do
+        createCmd OfferAppointment with doctor = testData.doctor, patient = testData.patient
+
+    (apptId, regId, policyId) <- submit testData.patient do
+        exerciseCmd offerApt AcceptAppointment with registerId = testData.registerId, policyId = testData.policyId
+
+    return()
