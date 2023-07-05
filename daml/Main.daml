@@ -1,44 +1,61 @@
 module Main where
 
+import MedicalRecord
+import HealthInsurance
+import Doctor
 import Daml.Script
 
-type AssetId = ContractId Asset
+-- create test-data structure
+data TestData = TestData 
+    with 
+        registry: Party 
+        doctor: Party 
+        patient: Party
+        insurer: Party
+        policyId: ContractId Policy
+        registerId: RegisterId 
+    deriving (Show)
 
-template Asset
-  with
-    issuer : Party
-    owner  : Party
-    name   : Text
-  where
-    ensure name /= ""
-    signatory issuer
-    observer owner
-    choice Give : AssetId
-      with
-        newOwner : Party
-      controller owner
-      do create this with
-           owner = newOwner
+-- create function to allocate values to test-data structure
+setupTestData:  Script TestData 
+setupTestData = do 
+    patient <- allocateParty "Alice"
+    registry <- allocateParty "Registry"
+    doctor <- allocateParty "Doctor"
+    insurer <- allocateParty "Insurance"
+    bank <- allocateParty "Bank"
 
-setup : Script AssetId
-setup = script do
--- user_setup_begin
-  alice <- allocatePartyWithHint "Alice" (PartyIdHint "Alice")
-  bob <- allocatePartyWithHint "Bob" (PartyIdHint "Bob")
-  aliceId <- validateUserId "alice"
-  bobId <- validateUserId "bob"
-  createUser (User aliceId (Some alice)) [CanActAs alice]
-  createUser (User bobId (Some bob)) [CanActAs bob]
--- user_setup_end
+    let treatments = ["GeneralCounsel", "Flu-shot", "Hip-replacement"]
 
-  aliceTV <- submit alice do
-    createCmd Asset with
-      issuer = alice
-      owner = alice
-      name = "TV"
+    policyId <- submit insurer do
+        createCmd Policy with insurer, client = patient, paymentBank = bank, treatments, observers = []
 
-  bobTV <- submit alice do
-    exerciseCmd aliceTV Give with newOwner = bob
+    mb <- submit registry do 
+        createCmd Register with registry, owner = patient, observers = [patient], records = []
 
-  submit bob do
-    exerciseCmd bobTV Give with newOwner = alice
+    registerId <- submit patient do
+        exerciseCmd mb AddRecord with description = "Don't think the patient will last long unless he quits smoking.", doctor
+
+    return $ TestData with 
+            ..
+
+testScript: Script () 
+testScript = do 
+    testData <- setupTestData 
+
+    offerApt <- submit testData.doctor do
+        createCmd OfferAppointment with doctor = testData.doctor, patient = testData.patient
+
+    (apptId, regId, policyId) <- submit testData.patient do
+        exerciseCmd offerApt AcceptAppointment with registerId = testData.registerId, insurer = testData.insurer
+    
+    p2 <- submit testData.doctor do
+        exerciseCmd apptId PrescribeTreatment with
+            description = "Did a hip replacement"
+            treatment = "Hip-replacement"
+            fee = Amount { currency = "USD", quantity = 15 }
+    
+    submit testData.doctor do
+        exerciseCmd apptId PaymentReceived
+
+    return()

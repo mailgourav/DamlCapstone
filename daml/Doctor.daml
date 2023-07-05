@@ -3,7 +3,6 @@ module Doctor where
 import MedicalRecord
 import HealthInsurance
 
-import Daml.Script
 
 type AppointmentId = ContractId Appointment
 
@@ -12,6 +11,16 @@ type Currency = Text
 -- Add a new data type to describe amounts, including the currency
 data Amount = Amount { quantity : Int, currency : Currency } deriving (Eq, Show) 
 
+
+-- | An enum that captures the settlement status of a trade.
+data AppointmentStatus
+  = Initiated
+    -- ^ Appointment offered by doctor 
+  | Accepted
+    -- ^ Accepted by patient
+  | Closed
+    -- ^ Treatment delievered and appointment closed
+  deriving (Eq, Show)
 
 {-
   Offer for a doctors appointment
@@ -36,13 +45,14 @@ template OfferAppointment
     choice AcceptAppointment : (AppointmentId, MedicalRecord.RegisterId, HealthInsurance.PolicyId)
       with
         registerId : MedicalRecord.RegisterId
-        policyId : HealthInsurance.PolicyId
+        insurer : Party
       controller patient 
       do
         -- Add the doctor as an observer to the medical record and to the policy
         rId <- exercise registerId MedicalRecord.AddObserver with party = doctor
-        pId <- exercise policyId HealthInsurance.AddObserver with party = doctor
-        ap <- create Appointment with doctor, patient, registerId = rId, policyId = pId
+        policyId <- fetchByKey @Policy (insurer, patient)
+        pId <- exercise policyId._1 HealthInsurance.AddObserver with party = doctor
+        ap <- create Appointment with doctor, patient, registerId = rId, policyId = pId, status = Accepted
         return (ap, rId, pId)
 
 
@@ -57,13 +67,14 @@ template Appointment
     patient : Party
     registerId: MedicalRecord.RegisterId
     policyId : HealthInsurance.PolicyId
+    status : AppointmentStatus
   where
     signatory doctor, patient
 
     {-
-      Tick off this appointment by providing a description of the treatment
+      Prescribe treatment
     -}
-    choice TickOff : ( MedicalRecord.RegisterId)
+    nonconsuming choice  PrescribeTreatment : ( MedicalRecord.RegisterId)
       with
         description : Text
         treatment : HealthInsurance.Treatment
@@ -75,7 +86,7 @@ template Appointment
         -}
         register <- fetch registerId
         -- Ensure that this is the right register
-        assert (register.owner == patient)
+        assertMsg "Not a relevant record"  (register.owner == patient)
         -- Add new record to register
         registerId2 <- exercise registerId AddRecord with description, doctor
         {-
@@ -83,6 +94,15 @@ template Appointment
         -}
         policy <- fetch policyId
         -- Ensure that this is the right policy
-        assert (policy.client == patient)
+        assertMsg "Wrong policy document provided" (policy.client == patient)
        
         return (registerId2)
+    {-
+    Payment received by doctor and the appointment contract can be archived now
+    -}
+    choice PaymentReceived : AppointmentId
+      controller doctor
+      do 
+        create this with status = Closed
+        
+    

@@ -32,10 +32,10 @@ template Policy
     treatments : [Treatment]
     observers : [Party]
   where 
-
     signatory insurer 
     observer observers, client
-
+    key(insurer, client) : (Party, Party)
+    maintainer key._1
     -- {-
     --   Claim a treatment 
       

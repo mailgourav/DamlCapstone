@@ -4,7 +4,7 @@
 sdk-version: 2.6.1
 name: CapstoneProj
 source: daml
-init-script: Main:setup
+init-script: Main:setupTestData
 version: 0.0.1
 dependencies:
   - daml-prim
