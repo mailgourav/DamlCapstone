@@ -15,7 +15,7 @@ Preconditions
   Patient medical record is maintained by Registrar and owned by patient
   Patient has insurance policy with Insurer and he can share it with other parties as needed
   
-  1. doctor creates the OfferAppointment contract with the observer as patient     
+  1. doctor creates the OfferAppointment contract with patient as observer     
   2. patient exercices the choice AcceptAppointment sharing his MedicalRecordId(that is kept with Registrar) and insurance provider details. Executing this choice creates the appoint with the doctor
   3. doctor provides the treatment and excercise the choice PrescribeTreatment recording treatment details, fetch health insurance policy and creates a new claim for the treatment expenses
 
