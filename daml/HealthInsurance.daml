@@ -1,12 +1,16 @@
 module HealthInsurance where
 
+
 import Daml.Script
+
+-- Add a new type alias for currencies
+type Currency = Text
+-- Add a new data type to describe amounts, including the currency
+data Amount = Amount { quantity : Int, currency : Currency } deriving (Eq, Show) 
+
 
 {-
   Simple definition of a treatment as a text string.
-
-  We will use the treatment definition in order to simulate the
-  treatment catalogue included in an health insurance policy.
 -}
 type Treatment = Text 
 
@@ -20,8 +24,7 @@ addOnce list party = if (any (\x -> x == party) list) then list else party :: li
 {-
   Health care insurance policy
 
-  We simplistically model the insurance policy here as a contract
-  between the insurer and a client, which includes the set of 
+  Insurance policy here is a contract between the insurer and a client, which includes the set of 
   treatments included in this policy.
 -}
 template Policy 
@@ -36,28 +39,28 @@ template Policy
     observer observers, client
     key(insurer, client) : (Party, Party)
     maintainer key._1
-    -- {-
-    --   Claim a treatment 
+    {-
+      Claim a treatment 
       
-    --   The only choice included in this contract is a choice that allows
-    --   a client to create a claim for a treatment he received from
-    --   a doctor. 
+      Choice that allows
+      a client to create a claim for a treatment he received from
+      a doctor. 
+      Exercising this choice will 
+      keep the insurance Policy contract active.
+    -}
+    nonconsuming choice  CreateClaim : ()
+      with 
+        treatment : Treatment 
+        doctor : Party
+        fee : Amount
+      controller client
+      do 
+        -- Check that claimed treatment is covered
+        assertMsg "Treatment not covered under the policy" (any (\x -> x == treatment) treatments)
+        assertMsg "Currency not supported" (fee.currency == "USD")
+        assertMsg "Claim Amount can't exceed 1000$" (fee.quantity <= 1000)
+        -- TBD Create a new claim for the given treatment
 
-    --   Note one special thing: the choice is non-consuming which means
-    --   that in contrast to normal choices, exercising this choice will 
-    --   keep the insurance Policy contract active.
-    -- -}
-    -- choice nonconsuming CreateClaim : ClaimId
-    --   with 
-    --     treatment : Treatment 
-    --     doctor : Party
-    --     fee : Amount
-    --   controller client
-    --   do 
-    --     -- Check that claimed treatment is covered
-    --     assert (any (\x -> x == treatment) treatments)
-    --     -- Create a new claim for the given treatment
-    --     create Claim with insurer, doctor, client, paymentBank, treatment, fee
 
     {-
       Add an observer to this contract
@@ -71,14 +74,34 @@ template Policy
       do 
         create this with observers = addOnce observers party
 
-setup = script do 
+testScript : Script ()
+testScript = script do 
 
   let treatments = ["GeneralCounsel", "Flu-shot", "Hip-replacement"]
   client <- allocateParty "Alice"
   insurer <- allocateParty "Insurance"
   bank <- allocateParty "Bank"
+  doctor <- allocateParty "doctor"
 
   policyId <- submit insurer do
     createCmd Policy with insurer, client, paymentBank = bank, treatments, observers = []
 
-  return (client, insurer, policyId)    
+  submitMustFail client do
+    exerciseCmd policyId CreateClaim with 
+      treatment = "Tooth-replacement"
+      doctor = doctor
+      fee = Amount { currency = "USD", quantity = 15 }
+    
+  submitMustFail client do
+    exerciseCmd policyId CreateClaim with 
+      treatment = "GeneralCounsel"
+      doctor = doctor
+      fee = Amount { currency = "SGD", quantity = 15 }  
+
+  submitMustFail client do
+    exerciseCmd policyId CreateClaim with 
+      treatment = "GeneralCounsel"
+      doctor = doctor
+      fee = Amount { currency = "USD", quantity = 1500 }  
+
+  return()

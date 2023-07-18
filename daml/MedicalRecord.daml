@@ -31,19 +31,6 @@ template Register
     signatory registry
     observer observers
   
-    -- choice TransferRecords : Either RegisterId TransferId
-    --     with
-    --         newRegistry : Party 
-    --     controller owner
-    --     do 
-    --         if newRegistry == owner then do
-    --         cr <- create this with registry = owner
-    --         return $ Left(cr)
-    --         else do 
-    --         cr <- create TransferRegisterRequest with 
-    --             registry = newRegistry, owner, observers, records
-    --         return $ Right(cr)
-
     choice AddRecord : RegisterId
         with
             description : Text
@@ -61,7 +48,8 @@ template Register
         controller owner
         do 
           create this with observers = addOnce observers party
-setup = script do 
+
+testMR = script do 
   alice <- allocateParty "Alice"
   registry <- allocateParty "Registry"
   doctor <- allocateParty "Doctor"
@@ -69,7 +57,11 @@ setup = script do
   mb <- submit registry do 
     createCmd Register with registry, owner = alice, observers = [alice], records = []
 
-  mb2 <- submit alice do
+  mb <- submit alice do
     exerciseCmd mb AddRecord with description = "Don't think the patient will last long unless he quits smoking.", doctor
 
-  return (alice, registry, doctor, mb2)
+  mb <- submit alice do
+    exerciseCmd mb AddObserver with party = doctor
+
+  return ()
+
